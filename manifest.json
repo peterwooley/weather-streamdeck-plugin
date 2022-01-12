@@ -1,0 +1,42 @@
+{
+  "Actions": [
+    {
+      "Icon": "weather-icon",
+      "Name": "Weather",
+      "States": [
+        {
+          "Image": "weather-icon",
+          "TitleAlignment": "top",
+          "FontSize": "18",
+          "ShowTitle": true
+        }
+      ],
+      "SupportedInMultiActions": false,
+      "Tooltip": "A simple weather plugin with temperature and AccuWeather icons. Based on @tariguney's Weather plugin.",
+      "UUID": "com.peterwooley.weather.action"
+    }
+  ],
+  "SDKVersion": 2,
+  "Author": "Peter Wooley",
+  "CodePath": "index.html",
+  "Description": "",
+  "Name": "Simple Weather",
+  "Icon": "weather-icon",
+  "URL": "https://github.com/peterwooley/weather-streamdeck-plugin",
+  "PropertyInspectorPath": "weather_pi.html",
+  "Version": "2.3",
+  "OS": [
+    {
+      "Platform": "mac",
+      "MinimumVersion": "10.11"
+    },
+    {
+      "Platform": "windows",
+      "MinimumVersion": "10"
+    }
+  ],
+  "Software": 
+    {
+        "MinimumVersion" : "4.1"
+    }
+}

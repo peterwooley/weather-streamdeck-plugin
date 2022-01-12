@@ -1,0 +1,180 @@
+<!DOCTYPE HTML>
+<html>
+
+<head>
+    <title>com.peterwooley.weather</title>
+    <meta charset="utf-8"/>
+    <script src="common.js"></script>
+    <script src="moment.js"></script>
+    <script src="jquery-3.3.1.js"></script>
+</head>
+
+<body>
+<script>
+    const actionName = "com.peterwooley.weather.action";
+    let intervals = {};
+
+    if ($SD) {
+        $SD.on('connected', conn => connected(conn));
+
+        function connected(jsn) {
+            $SD.on(actionName + ".willAppear", function (jsonObj) {
+                initiateWeatherStatus(jsonObj.context, jsonObj.payload.settings);
+            });
+
+            $SD.on(actionName + ".sendToPlugin", function (jsonObj) {
+                $SD.api.setSettings(jsonObj.context, jsonObj.payload);
+                initiateWeatherStatus(jsonObj.context, jsonObj.payload);
+            });
+
+            // When pressed, the weather status gets updated!
+            $SD.on(actionName + ".keyUp", function (jsonObj) {
+                initiateWeatherStatus(jsonObj.context, jsonObj.payload.settings);
+            });
+        }
+
+        function initiateWeatherStatus(context, settings) {
+            if (intervals[context]) {
+                let interval = intervals[context];
+                clearInterval(interval);
+            }
+
+            // Initial call for the first time, then schedule for every 1 hours.
+            setTitleWithWeatherStatus(context, settings);
+
+            intervals[context] = setInterval(() => {
+                    let clonedSettings = {};
+                    // Just making sure we are not hurt by closure.
+                    Object.assign(clonedSettings, settings);
+                    setTitleWithWeatherStatus(context, clonedSettings);
+                },
+                moment.duration(1, 'hours').asMilliseconds());
+        }
+
+        function setTitleWithWeatherStatus(context, settings) {
+            $SD.api.setTitle(context, "...");
+
+            if (settings.zipCode) {
+                getWeatherForZipcode(settings, result => resultCallback(result, context));
+            } else if (settings.city) {
+                getWeatherForCity(settings, result => resultCallback(result, context));
+            }
+        }
+
+        function resultCallback(result, context) {
+            if (!result.hasOwnProperty("Mood")) {
+                $SD.api.setTitle(context, result);
+                return;
+            }
+
+            // If the Celsius is selected by the user, then converting the displayed temperature and unit to Celsius.
+            // The default is F, which is 0. So, no need to touch anything if it is selected.
+            if (result.DegreeType === 1) {
+                result.Temperature.Value = convertToCelsius(result.Temperature.Value);
+                result.Temperature.Unit = "C";
+            }
+
+            $SD.api.setTitle(context, result.Temperature.Value + "° " + result.Temperature.Unit);
+
+            let url = "https://developer.accuweather.com/sites/default/files/{Icon}-s.png";
+            toDataURL(url.replace("{Icon}", result.Icon.length >= 2 ? result.Icon : "0"+result.Icon),
+                function (dataUrl) {
+                    $SD.api.setImage(context, dataUrl);
+                }
+            );
+        }
+
+        function getWeatherForZipcode(settings, updateTitleFn) {
+            let locationEndPoint = "http://dataservice.accuweather.com/locations/v1/postalcodes/{countryCode}/search"
+                .replace("{countryCode}", settings.countryCode);
+
+            $.getJSON(locationEndPoint, {apikey: settings.apiKey, q: settings.zipCode})
+                .done(function (response) {
+                    if (response.length > 0 && response[0].Key) {
+                        getWeather(settings.degreeType, settings.apiKey, response[0].Key, updateTitleFn);
+                    } else {
+                        updateTitleFn("Location\nnot\nfound!");
+                    }
+                })
+                .fail(function (jqxhr, textStatus, error) {
+                    if (jqxhr.status === 503) {
+                        updateTitleFn("Exceeded...!")
+                    } else {
+                        updateTitleFn(error);
+                    }
+                });
+        }
+
+        function getWeatherForCity(settings, updateTitleFn) {
+            let locationEndPoint = "http://dataservice.accuweather.com/locations/v1/cities/{countryCode}/search"
+                .replace("{countryCode}", settings.countryCode);
+
+            $.getJSON(locationEndPoint, {apikey: settings.apiKey, q: encodeURIComponent(settings.city)})
+                .done(function (response) {
+                    if (response.length > 0 && response[0].Key) {
+                        getWeather(settings.degreeType, settings.apiKey, response[0].Key, updateTitleFn);
+                    } else {
+                        updateTitleFn("Location\nnot\nfound!");
+                    }
+                })
+                .fail(function (jqxhr, textStatus, error) {
+                    if (jqxhr.status === 503) {
+                        updateTitleFn("Exceeded...!")
+                    } else {
+                        updateTitleFn(error);
+                    }
+                });
+        }
+
+        function getWeather(degreeType, apiKey, locationKey, updateTitleFn) {
+            let endpoint = "http://dataservice.accuweather.com/forecasts/v1/hourly/1hour/{locationKey}"
+                .replace("{locationKey}", locationKey);
+
+            $.getJSON(endpoint, {apikey: apiKey})
+                .done(function (response) {
+                    updateTitleFn({
+                        "DegreeType": degreeType,
+                        "Mood": response[0].IconPhrase,
+                        "Icon": response[0].WeatherIcon,
+                        "Temperature": response[0].Temperature
+                    });
+                })
+                .fail(function (jqxhr) {
+                    if (jqxhr.status === 503) {
+                        updateTitleFn("Exceeded number of calls!")
+                    } else {
+                        updateTitleFn("Error!\nTry again\nlater!")
+                    }
+                });
+        }
+
+        function toDataURL(src, callback, outputFormat) {
+            let img = new Image();
+            img.crossOrigin = 'Anonymous';
+            img.onload = function () {
+                let canvas = document.createElement('CANVAS');
+                let ctx = canvas.getContext('2d');
+                let dataURL;
+                canvas.height = 72;
+                canvas.width = 72;
+                ctx.drawImage(this, 0,24, (72/this.naturalWidth)*this.naturalWidth, (72/this.naturalWidth)*this.naturalHeight);
+                dataURL = canvas.toDataURL(outputFormat);
+                callback(dataURL);
+            };
+            img.src = src;
+            if (img.complete || img.complete === undefined) {
+                img.src = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
+                img.src = src;
+            }
+        }
+
+        function convertToCelsius(fahrenheit) {
+            return parseInt((fahrenheit - 32) * (5 / 9));
+        }
+    }
+
+</script>
+
+</body>
+
+</html>
